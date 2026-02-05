@@ -10,7 +10,7 @@ const jwt = require('jsonwebtoken');
 
 
 
-console.log(`Server running at ${port} `);
+
 
 //multer storage
 const storage = multer.diskStorage({
@@ -263,6 +263,7 @@ app.post('/login', async (req, res) => {
 });
 
 
+const port = process.env.PORT || 5000;
 
 //server connection
 app.listen(port, () =>{
