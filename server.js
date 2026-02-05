@@ -31,7 +31,7 @@ mongoose.connect(process.env.MONGO_URI_SIKRET_KEY)
 
 
 const app = express();
-const port = 5000;
+
 
 //middleware
 app.use(cors());
