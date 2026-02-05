@@ -10,6 +10,7 @@ const jwt = require('jsonwebtoken');
 
 
 
+console.log(`Server running at ${port} `);
 
 //multer storage
 const storage = multer.diskStorage({
@@ -67,6 +68,11 @@ app.get('/auth/me', authenticateToken, async (req, res) => {
 
 
 
+//test
+app.get('/', (req, res) => {
+    res.send('Backend is running!');
+  });
+  
 
 //routes
 
@@ -260,5 +266,5 @@ app.post('/login', async (req, res) => {
 
 //server connection
 app.listen(port, () =>{
-    console.log(`Server running at http://localhost:${port} `);
+    console.log(`Server running at ${port} `);
 });
