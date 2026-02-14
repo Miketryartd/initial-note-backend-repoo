@@ -67,9 +67,22 @@ const app = express();
 const port = 5000;
 
 //middleware
+const local = process.env.FRONTEND_URL;
+const prod = process.env.FRONTEND_URL_PROD;
+const allowedOrigins = [
+  prod,
+  local
+];
 app.use(cors({
-    origin: "http://localhost:5173",
-    credentials: true
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true); 
+    if(allowedOrigins.indexOf(origin) !== -1){
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed for this origin'));
+    }
+  },
+  credentials: true,
 }));
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
@@ -133,7 +146,7 @@ app.post('/files', authenticateToken, upload.fields([{name: "files", maxCount: 1
 
         let fileUrls;
         if (STORAGE_MODE === 'local') {
-            fileUrls = uploadedFiles.map(f => f.path.replace(/\\/g, "/"));
+            fileUrls = uploadedFiles.map(f => f.path?.replace(/\\/g, "/"));
         } else {
             fileUrls = uploadedFiles.map(f => f.path);
         }
@@ -181,6 +194,7 @@ app.get('/files-fetch', async (req, res) =>{
     } catch (err){
         res.status(500).json({error: "Failed to fetch files"});
     }
+  
 });
 
 app.get('/post/:id', async (req, res) =>{
