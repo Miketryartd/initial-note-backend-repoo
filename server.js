@@ -13,11 +13,14 @@ const Notification = require('./models/Notification');
 const cloudinary = require('cloudinary').v2;
 const {CloudinaryStorage} = require("multer-storage-cloudinary");
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_CLOUD_API_KEY,
-  api_secret: process.env.CLOUDINARY_CLOUD_API__SECRET
-});
+
+
+const app = express();
+const port = 5000;
+app.use(express.json({limit: "50mb"}));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/uploads', express.static('uploads'));
+
 
 const STORAGE_MODE = process.env.STORAGE_MODE || 'local';
 let upload;
@@ -26,23 +29,24 @@ let upload;
 if (STORAGE_MODE === 'local'){
 
   const storage = multer.diskStorage({
-    destiantion: (req, file, cb) => cb(null, process.env.LOCAL_UPLOAD_PATH || "uploads"),
+    destination: (req, file, cb) => cb(null, process.env.LOCAL_UPLOAD_PATH || "uploads"),
     filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
       cb(null, uniqueSuffix + '-' + file.originalname);
     },
   });
-  upload = multer({ storage });
+  upload = multer({ storage, limits: {fileSize: 50 * 1024 * 1024} });
 } else if (STORAGE_MODE === 'cloud'){
   const cloudinary = require('cloudinary').v2;
   const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
+
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+    api_key: process.env.CLOUDINARY_CLOUD_API_KEY,
+    api_secret: process.env.CLOUDINARY_CLOUD_API_SECRET
   });
-
+  
   const storage = new CloudinaryStorage({
     cloudinary,
     params: {
@@ -63,8 +67,6 @@ mongoose.connect(process.env.MONGO_URI_SIKRET_KEY)
 .catch(err => console.log(err));
 
 
-const app = express();
-const port = 5000;
 
 //middleware
 const local = process.env.FRONTEND_URL;
@@ -84,8 +86,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+
 
 
 
@@ -127,61 +128,63 @@ app.get('/', (req, res) => {
 
 //routes
 
-
-
-app.post('/files', authenticateToken, upload.fields([{name: "files", maxCount: 12}, {name: 'cover_photo', maxCount: 1}]), async (req, res) => {
+app.post(
+  '/files',
+  authenticateToken,
+  upload.fields([{ name: "files", maxCount: 12 }, { name: 'cover_photo', maxCount: 1 }]),
+  async (req, res) => {
     try {
-        const uploadedFiles = req.files['files'] || [];
-        const cover = req.files['cover_photo']?.[0] || null;
-        const { subject, description } = req.body;
+      const uploadedFiles = req.files?.['files'] || [];
+      const cover = req.files?.['cover_photo']?.[0] || null;
+      const { subject, description } = req.body;
 
-        if (!uploadedFiles || uploadedFiles.length === 0) {
-            return res.status(400).json({ error: "No files uploaded" });
-        }
-        
-        const user = await User.findById(req.user.id);
-        if (!user){
-            return res.status(404).json({error: "User not found."});
-        }
+      if (!uploadedFiles || uploadedFiles.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
 
-        let fileUrls;
-        if (STORAGE_MODE === 'local') {
-            fileUrls = uploadedFiles.map(f => f.path?.replace(/\\/g, "/"));
-        } else {
-            fileUrls = uploadedFiles.map(f => f.path);
-        }
+      const user = await User.findById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found." });
+      }
 
-        const coverUrl = cover ? (STORAGE_MODE === 'local' ? cover.path.replace(/\\/g, "/") : cover.path) : null;
+      let fileUrls;
+      if (STORAGE_MODE === 'local') {
+        fileUrls = uploadedFiles.map(f => f.path?.replace(/\\/g, "/"));
+      } else {
+        fileUrls = uploadedFiles.map(f => f.path);
+      }
 
-        console.log(`Received ${uploadedFiles.length} files`);
+      const coverUrl = cover
+        ? STORAGE_MODE === 'local'
+          ? cover.path.replace(/\\/g, "/")
+          : cover.path
+        : null;
 
-       
+      console.log(`Received ${uploadedFiles.length} files`);
+      console.log("Files details:", uploadedFiles);
+      console.log("Form data:", req.body);
 
-        const newNote = new User_files({
-            username: user.username,
-            subject: subject,
-            description: description,
-            filePaths: fileUrls,
-            coverPhoto: coverUrl,
-            userId: req.user.id
-        });
+      const newNote = new User_files({
+        username: user.username,
+        subject,
+        description,
+        filePaths: fileUrls,
+        coverPhoto: coverUrl,
+        userId: req.user.id
+      });
 
-     
-        await newNote.save();
-        
-        console.log("Files details:", uploadedFiles);
-        console.log("Form data:", req.body);
+      await newNote.save();
 
-        res.status(201).json({
-            message: "Notes saved to db and files saved to disk.", 
-            note: newNote
-        });
-        
+      res.status(201).json({
+        message: "Notes saved to db and files saved to disk.",
+        note: newNote
+      });
     } catch (err) {
-        console.error("Internal Server Error:", err);
-        res.status(500).json({ error: "Upload failed" });
+      console.error("Internal Server Error:", err);
+      res.status(500).json({ error: "Upload failed" });
     }
-});
+  }
+);
 
 
 
@@ -581,29 +584,53 @@ app.patch("/api/notifications/read", authenticateToken, async (req, res) => {
       return res.status(500).json({ error: "Failed to bookmark post" });
     }
   });
-  
-  app.get("/api/bookmarks", authenticateToken, async (req, res) => {
-    try {
-      const userId = req.user.id;
-  
-      const user = await User.findById(userId).populate("bookmarks.postId");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-  
-      if (!user.bookmarks || user.bookmarks.length === 0) {
-        return res.json([]); 
-      }
-  
-      res.json(user.bookmarks);
-  
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Server error" });
+
+app.get("/api/bookmarks", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate("bookmarks.postId");
+    if (!user || !user.bookmarks) return res.json({ bookmarks: [] });
+
+    res.json({ bookmarks: user.bookmarks }); 
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/bookmarks/ids", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || !user.bookmarks) return res.json({ bookmarks: [] });
+
+    const ids = user.bookmarks.map(b => b.postId.toString());
+    res.json({ bookmarks: ids });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+//search
+app.get('/api/search', authenticateToken, async (req, res) => {
+  try {
+    const { search } = req.query;
+    if (!search) return res.status(400).json({ error: 'No search query provided' });
+
+    const users = await User.find({
+      username: { $regex: search, $options: 'i' }
+    }).sort({ _id: -1 });
+
+    res.status(200).json(users); 
+
+  } catch (error) {
+    console.error('Error posting search:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error' }); 
     }
-  });
-  
-  
+  }
+});
+
+
 
    //auth
    app.post('/registration', async (req, res) => {
