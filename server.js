@@ -641,20 +641,19 @@ app.get('/api/search', authenticateToken, async (req, res) => {
    //google
 
    
-   app.post('/api/auth/google', async (req, res) =>{
-
-    try{
-      const {token} = req.body;
-      if (!token){
-        return res.status(404).json({error: "No token Provided!"});
-      }
+   app.post('/api/auth/google', async (req, res) => {
+    try {
+      const { credential } = req.body;
+      if (!credential) return res.status(400).json({ error: "No credential provided!" });
+  
       const ticket = await client.verifyIdToken({
-        idToken: token,
+        idToken: credential,
         audience: process.env.GOOGLE_CLIENT_ID,
       });
-
+  
       const payload = ticket.getPayload();
       const { sub, email, name, picture } = payload;
+  
       let user = await User.findOne({ googleId: sub });
       if (!user) {
         user = await User.create({
@@ -665,15 +664,16 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           authProvider: 'google'
         });
       }
+  
       const jwtToken = signJwt({ id: user._id, email: user.email });
       return res.status(200).json({ user, token: jwtToken });
-    
-    } catch (error){
+  
+    } catch (error) {
       console.error('Error posting google data', error);
-      res.status(500).json({error: "Server error"});
+      res.status(500).json({ error: "Server error" });
     }
-   });
-
+  });
+  
    app.post('/registration', async (req, res) => {
     try {
         const { email_address, username, password } = req.body;
