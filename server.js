@@ -12,8 +12,12 @@ const bcrypt = require('bcrypt');
 const Notification = require('./models/Notification');
 const cloudinary = require('cloudinary').v2;
 const {CloudinaryStorage} = require("multer-storage-cloudinary");
+const {OAuth2Client}  = require('google-auth-library');
 
 
+//google auth//
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const app = express();
 const port = 5000;
@@ -633,6 +637,43 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
 
    //auth
+
+   //google
+
+   
+   app.post('/api/auth/google', async (req, res) =>{
+
+    try{
+      const {token} = req.body;
+      if (!token){
+        return res.status(404).json({error: "No token Provided!"});
+      }
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      const payload = ticket.getPayload();
+      const { sub, email, name, picture } = payload;
+      let user = await User.findOne({ googleId: sub });
+      if (!user) {
+        user = await User.create({
+          googleId: sub,
+          email,
+          username: name,
+          avatar: picture,
+          authProvider: 'google'
+        });
+      }
+      const jwtToken = signJwt({ id: user._id, email: user.email });
+      return res.status(200).json({ user, token: jwtToken });
+    
+    } catch (error){
+      console.error('Error posting google data', error);
+      res.status(500).json({error: "Server error"});
+    }
+   });
+
    app.post('/registration', async (req, res) => {
     try {
         const { email_address, username, password } = req.body;
