@@ -13,7 +13,7 @@ const Notification = require('./models/Notification');
 const cloudinary = require('cloudinary').v2;
 const {CloudinaryStorage} = require("multer-storage-cloudinary");
 const {OAuth2Client}  = require('google-auth-library');
-
+const axios = require('axios');
 
 //google auth//
 
@@ -111,15 +111,33 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-
-
 app.get('/auth/me', authenticateToken, async (req, res) => {
-    try {
-        const user = await User.findById(req.user.id).select('-password');
-        res.status(200).json(user);
-    } catch (err) {
-        res.status(500).json({ error: "Server error" });
-    }
+  try {
+  
+      let user = await User.findById(req.user.id).select('-password');
+      
+    
+      if (!user && req.user.authProvider === 'google') {
+        
+          return res.status(200).json({
+              _id: req.user.id,
+              username: req.user.name,
+              email: req.user.email,
+              avatar: req.user.picture,
+              authProvider: 'google'
+            
+          });
+      }
+      
+      if (!user) {
+          return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.status(200).json(user);
+  } catch (err) {
+      console.error('Error in /auth/me:', err);
+      res.status(500).json({ error: "Server error" });
+  }
 });
 
 
@@ -638,42 +656,73 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
    //auth
 
+   //github
    //google
-
-   
    app.post('/api/auth/google', async (req, res) => {
     try {
-      const { credential } = req.body;
-      if (!credential) return res.status(400).json({ error: "No credential provided!" });
+      const { token } = req.body;
+      if (!token) return res.status(400).json({ error: "No credential provided!" });
   
       const ticket = await client.verifyIdToken({
-        idToken: credential,
+        idToken: token,
         audience: process.env.GOOGLE_CLIENT_ID,
       });
   
       const payload = ticket.getPayload();
       const { sub, email, name, picture } = payload;
   
-      let user = await User.findOne({ googleId: sub });
-      if (!user) {
-        user = await User.create({
-          googleId: sub,
-          email,
-          username: name,
-          avatar: picture,
-          authProvider: 'google'
-        });
-      }
+      let user = await User.findOneAndUpdate(
+        { googleId: sub }, 
+        {
+          $set: {
+            googleId: sub,
+            email: email,
+            username: name,
+            avatar: picture,
+            authProvider: 'google',
+            lastLogin: new Date()
+          },
+          $setOnInsert: {
+           
+            bookmarks: [],
+            createdAt: new Date()
+          }
+        },
+        { 
+          upsert: true,
+          new: true, 
+          setDefaultsOnInsert: true
+        }
+      );
   
-      const jwtToken = signJwt({ id: user._id, email: user.email });
-      return res.status(200).json({ user, token: jwtToken });
+     
+      const jwtToken = jwt.sign(
+        { 
+          id: user._id, 
+          email: user.email,
+          name: user.username,
+          authProvider: 'google'
+        },
+        process.env.JWT_SICKRET_KEY_LOL, 
+        { expiresIn: '7d' } 
+      );
+  
+      return res.status(200).json({ 
+        user: {
+          _id: user._id,
+          email: user.email,
+          username: user.username,
+          avatar: user.avatar,
+          authProvider: 'google'
+        }, 
+        token: jwtToken 
+      });
   
     } catch (error) {
-      console.error('Error posting google data', error);
+      console.error('Error verifying Google token', error);
       res.status(500).json({ error: "Server error" });
     }
   });
-  
    app.post('/registration', async (req, res) => {
     try {
         const { email_address, username, password } = req.body;
